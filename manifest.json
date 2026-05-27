@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "TikTok Order Extractor",
-  "version": "3.0",
-  "description": "Tu dong lay SDT va dia chi khach hang tu TikTok Seller Center - Ho tro nhieu tai khoan",
+  "version": "4.0",
+  "description": "Tu dong lay SDT va dia chi khach hang tu TikTok Seller Center - 1 tai khoan, tung trang san pham",
   "permissions": ["storage", "activeTab", "tabs"],
   "host_permissions": [
     "https://seller-vn.tiktok.com/*",

@@ -16,34 +16,13 @@
   const btnClear = $('btnClear');
   const btnSave = $('btnSave');
   const btnTestSheet = $('btnTestSheet');
-  const btnRefreshProgress = $('btnRefreshProgress');
   const delayInput = $('delay');
-  const pageCountInput = $('pageCount');
   const sheetUrlInput = $('sheetUrl');
   const dataTable = $('dataTable');
   const logArea = $('logArea');
-  const profileBadge = $('profileBadge');
   const saveMsg = $('saveMsg');
   const gsStatus = $('gsStatus');
   const orderRange = $('orderRange');
-  const globalProgressSection = $('globalProgressSection');
-  const globalProgressBar = $('globalProgressBar');
-  const globalStats = $('globalStats');
-
-  // ========== PROFILE ID ==========
-
-  function ensureProfileId(callback) {
-    chrome.storage.local.get(['profileId'], (s) => {
-      if (s.profileId) {
-        callback(s.profileId);
-      } else {
-        const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-        let id = 'profile-';
-        for (let i = 0; i < 8; i++) id += chars.charAt(Math.floor(Math.random() * chars.length));
-        chrome.storage.local.set({ profileId: id }, () => callback(id));
-      }
-    });
-  }
 
   // ========== UI HELPERS ==========
 
@@ -103,32 +82,21 @@
     const data = state.extractedData || [];
     const failCount = state.failCount || 0;
     const isRunning = state.isRunning || false;
-    const queueMode = state.queueMode || false;
+    const orders = state.orders || [];
 
-    // Show batch size or static order count
-    if (queueMode) {
-      const batch = state.currentBatch || [];
-      totalOrders.textContent = batch.length;
-    } else {
-      totalOrders.textContent = (state.orders || []).length;
-    }
-
+    totalOrders.textContent = orders.length;
     extracted.textContent = data.length;
     failed.textContent = failCount;
 
-    // Order range info
-    if (state.allOrdersCount && !queueMode) {
-      orderRange.textContent = 'Tong ' + state.allOrdersCount + ' don';
-    } else if (queueMode) {
-      orderRange.textContent = 'Queue mode — don duoc phan phoi tu Google Sheet';
+    if (orders.length > 0) {
+      orderRange.textContent = 'Tong ' + orders.length + ' don tu trang nay';
     } else {
       orderRange.textContent = '';
     }
 
     if (isRunning) {
-      const idx = queueMode ? (state.batchIndex || 0) : (state.currentIndex || 0);
-      const total = queueMode ? (state.currentBatch || []).length : (state.orders || []).length;
-      setStatus('running', 'Dang chay... (' + idx + '/' + total + ')');
+      const idx = state.currentIndex || 0;
+      setStatus('running', 'Dang chay... (' + idx + '/' + orders.length + ')');
       btnCollect.disabled = true;
       btnStart.disabled = true;
       btnStop.disabled = false;
@@ -137,57 +105,27 @@
       btnCollect.disabled = false;
       btnStart.disabled = false;
       btnStop.disabled = true;
-    } else if (!queueMode && data.length > 0 && (state.orders || []).length > 0
-      && data.length + failCount >= (state.orders || []).length) {
+    } else if (data.length > 0 && orders.length > 0 && data.length + failCount >= orders.length) {
       setStatus('done', 'Hoan tat!');
       btnCollect.disabled = false;
       btnStart.disabled = true;
       btnStop.disabled = true;
     } else {
-      const orderCount = queueMode ? (state.currentBatch || []).length : (state.orders || []).length;
-      setStatus('idle', orderCount > 0 ? 'San sang - ' + orderCount + ' don' : 'San sang');
+      setStatus('idle', orders.length > 0 ? 'San sang - ' + orders.length + ' don' : 'San sang');
       btnCollect.disabled = false;
-      btnStart.disabled = false;
+      btnStart.disabled = orders.length === 0;
       btnStop.disabled = true;
     }
 
     renderData(data);
   }
 
-  // ========== GLOBAL PROGRESS ==========
-
-  async function refreshGlobalProgress() {
-    const sheetUrl = sheetUrlInput.value.trim();
-    if (!sheetUrl) {
-      globalProgressSection.style.display = 'none';
-      return;
-    }
-    globalProgressSection.style.display = 'block';
-    try {
-      const response = await fetch(sheetUrl + '?action=status', { method: 'GET' });
-      const data = await response.json();
-      const total = data.total || 0;
-      const done = data.done || 0;
-      const claimed = data.claimed || 0;
-      const pending = data.pending || 0;
-      const failedCount = data.failed || 0;
-      const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-
-      globalProgressBar.style.width = pct + '%';
-      globalStats.textContent = 'Tong: ' + total + ' | Xong: ' + done
-        + ' | Dang XL: ' + claimed + ' | Cho: ' + pending + ' | Loi: ' + failedCount;
-    } catch (err) {
-      globalStats.textContent = 'Loi ket noi Sheet';
-    }
-  }
-
   // ========== SETTINGS ==========
 
   function loadSettings() {
-    chrome.storage.local.get(['sheetUrl', 'delay', 'pageCount'], (s) => {
+    chrome.storage.local.get(['sheetUrl', 'delay'], (s) => {
       sheetUrlInput.value = s.sheetUrl || '';
       delayInput.value = (s.delay || 5000) / 1000;
-      pageCountInput.value = s.pageCount || 1;
     });
   }
 
@@ -221,13 +159,11 @@
     const settings = {
       sheetUrl: sheetUrlInput.value.trim(),
       delay: (parseInt(delayInput.value) || 5) * 1000,
-      pageCount: parseInt(pageCountInput.value) || 1,
     };
     chrome.storage.local.set(settings, () => {
       saveMsg.style.display = 'block';
       setTimeout(() => { saveMsg.style.display = 'none'; }, 2000);
       addLog('Luu cai dat OK', 'success');
-      refreshGlobalProgress();
     });
   });
 
@@ -261,118 +197,57 @@
       });
   });
 
-  // Collect orders — content.js handles both DOM scraping AND pushing to Sheet
-  // (running fully in content script avoids popup-close interruption during long pagination)
+  // Collect orders from current page
   btnCollect.addEventListener('click', () => {
-    const pageCount = parseInt(pageCountInput.value) || 1;
     btnCollect.disabled = true;
     btnCollect.textContent = 'Dang thu thap...';
 
-    sendToContent('collectOrders', { pageCount }, (response) => {
+    sendToContent('collectOrders', {}, (response) => {
       btnCollect.disabled = false;
-      btnCollect.textContent = '1. Thu thap & Day';
+      btnCollect.textContent = '1. Thu thap trang nay';
 
       if (response && response.success) {
-        addLog('Thu thap ' + response.count + ' don tu ' + pageCount + ' trang', 'success');
-        if (response.pushed !== undefined) {
-          addLog('Hang doi: +' + response.pushed + ' moi, ' + (response.duplicate || 0) + ' trung', 'success');
-        }
-        refreshGlobalProgress();
+        addLog('Thu thap ' + response.count + ' don tu trang hien tai', 'success');
         loadState();
       } else if (response) {
         addLog('Khong thu thap duoc: ' + (response.error || 'unknown'), 'error');
       } else {
-        // No response — popup likely closed, but content.js continues. Tell user to refresh progress.
-        addLog('Popup mat ket noi. Bam Cap nhat de check.', '');
+        addLog('Mat ket noi voi tab.', 'error');
       }
     });
   });
 
   // Start extraction
   btnStart.addEventListener('click', async () => {
-    const state = await chrome.storage.local.get(['orders', 'delay', 'sheetUrl', 'profileId', 'queueMode']);
+    const state = await chrome.storage.local.get(['orders', 'delay']);
+    const orders = state.orders || [];
     const delay = state.delay || 5000;
-    const sheetUrl = state.sheetUrl || '';
-    const profileId = state.profileId || 'local';
-    const queueMode = state.queueMode || false;
 
-    if (queueMode && sheetUrl) {
-      // Queue mode: claim first batch from Sheet
-      addLog('Claim batch tu hang doi...', '');
-      try {
-        const response = await fetch(sheetUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({ action: 'claimBatch', profileId, batchSize: 10 }),
-          redirect: 'follow',
-        });
-        const data = await response.json();
-        const batch = data.orders || [];
-
-        if (batch.length === 0) {
-          addLog('Hang doi rong! Thu thap don truoc.', 'error');
-          return;
-        }
-
-        await chrome.storage.local.set({
-          isRunning: true, currentBatch: batch, batchIndex: 0,
-          rateLimited: false, failCount: 0, extractedData: [],
-        });
-        addLog('Bat dau voi ' + batch.length + ' don (delay: ' + (delay / 1000) + 's)', 'success');
-
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-          if (tabs[0]) {
-            chrome.tabs.update(tabs[0].id, {
-              url: 'https://seller-vn.tiktok.com/order/detail?order_no=' + encodeURIComponent(batch[0]) + '&shop_region=VN'
-            });
-          }
-        });
-      } catch (err) {
-        addLog('Loi claim batch: ' + err.message, 'error');
-        return;
-      }
-    } else {
-      // Local-only mode (original behavior)
-      await chrome.storage.local.set({
-        isRunning: true, currentIndex: 0, rateLimited: false, failCount: 0,
-      });
-      addLog('Bat dau (local mode, delay: ' + (delay / 1000) + 's)', 'success');
-      const orders = state.orders || [];
-      if (orders.length > 0) {
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-          if (tabs[0]) {
-            chrome.tabs.update(tabs[0].id, {
-              url: 'https://seller-vn.tiktok.com/order/detail?order_no=' + encodeURIComponent(orders[0]) + '&shop_region=VN'
-            });
-          }
-        });
-      }
+    if (orders.length === 0) {
+      addLog('Chua co don nao, hay thu thap truoc!', 'error');
+      return;
     }
+
+    await chrome.storage.local.set({
+      isRunning: true, currentIndex: 0, rateLimited: false, failCount: 0,
+    });
+    addLog('Bat dau (delay: ' + (delay / 1000) + 's)', 'success');
+
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]) {
+        chrome.tabs.update(tabs[0].id, {
+          url: 'https://seller-vn.tiktok.com/order/detail?order_no=' + encodeURIComponent(orders[0]) + '&shop_region=VN'
+        });
+      }
+    });
     loadState();
   });
 
-  // Stop — release remaining batch orders
+  // Stop
   btnStop.addEventListener('click', async () => {
-    const state = await chrome.storage.local.get(['sheetUrl', 'currentBatch', 'batchIndex', 'queueMode']);
-    if (state.queueMode && state.sheetUrl && state.currentBatch) {
-      // Skip current in-progress order (+1), release only untouched ones
-      const remaining = (state.currentBatch || []).slice((state.batchIndex || 0) + 1);
-      if (remaining.length > 0) {
-        try {
-          await fetch(state.sheetUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify({ action: 'releaseOrders', orders: remaining }),
-            redirect: 'follow',
-          });
-          addLog('Tra lai ' + remaining.length + ' don chua xu ly', '');
-        } catch (err) { /* ignore release error */ }
-      }
-    }
     await chrome.storage.local.set({ isRunning: false });
     addLog('Da dung', 'error');
     loadState();
-    refreshGlobalProgress();
   });
 
   // Export CSV
@@ -381,7 +256,7 @@
       const data = state.extractedData || [];
       if (data.length === 0) return;
 
-      const BOM = '\uFEFF';
+      const BOM = '﻿';
       let csv = BOM + 'Ma don hang,Ten khach hang,So dien thoai,Dia chi\n';
       data.forEach((item) => {
         const row = [
@@ -404,10 +279,10 @@
     });
   });
 
-  // Clear data
+  // Clear data (preserve settings)
   btnClear.addEventListener('click', () => {
     if (confirm('Xoa du lieu da lay? (Cai dat khong bi xoa)')) {
-      chrome.storage.local.get(['profileId', 'sheetUrl', 'delay', 'pageCount'], (settings) => {
+      chrome.storage.local.get(['sheetUrl', 'delay'], (settings) => {
         chrome.storage.local.clear(() => {
           chrome.storage.local.set(settings, () => {
             addLog('Da xoa du lieu');
@@ -416,11 +291,6 @@
         });
       });
     }
-  });
-
-  // Refresh global progress
-  btnRefreshProgress.addEventListener('click', () => {
-    refreshGlobalProgress();
   });
 
   // Listen for updates from content script
@@ -435,10 +305,6 @@
 
   // ========== INITIAL LOAD ==========
 
-  ensureProfileId((id) => {
-    profileBadge.textContent = id;
-    loadSettings();
-    loadState();
-    refreshGlobalProgress();
-  });
+  loadSettings();
+  loadState();
 })();

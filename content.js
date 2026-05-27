@@ -50,7 +50,7 @@
     });
   }
 
-  // ========== ORDER LIST: COLLECT ORDER NUMBERS ==========
+  // ========== ORDER LIST: COLLECT ORDER NUMBERS (CURRENT PAGE ONLY) ==========
 
   function collectOrderNumbers() {
     const orders = [];
@@ -92,181 +92,6 @@
     }
 
     return orders;
-  }
-
-  // ========== PAGINATION HELPERS ==========
-
-  // Detect disabled pagination item (TikTok uses p- prefix, older Arco uses arco-)
-  function isPaginationDisabled(el) {
-    if (!el) return true;
-    if (el.disabled) return true;
-    if (el.getAttribute('aria-disabled') === 'true') return true;
-    const cls = el.className || '';
-    return /(?:^|\s)(p|arco)-pagination-item-disabled(?:\s|$)/.test(cls)
-      || /\bdisabled\b/i.test(cls);
-  }
-
-  // Find Next pagination button — multiple fallback strategies
-  function findNextButton() {
-    // Strategy 1: TikTok current DOM uses "p-" prefix
-    const tiktokNext = document.querySelector('li.p-pagination-item-next, button.p-pagination-item-next');
-    if (tiktokNext && !isPaginationDisabled(tiktokNext) && isVisible(tiktokNext)) return tiktokNext;
-
-    // Strategy 2: Older Arco UI pagination
-    const arcoNext = document.querySelector('li.arco-pagination-item-next, button.arco-pagination-item-next');
-    if (arcoNext && !isPaginationDisabled(arcoNext) && isVisible(arcoNext)) return arcoNext;
-
-    // Strategy 3: aria-label = "Next" / "Tiếp" / "Trang sau" (case-insensitive)
-    const ariaCandidates = document.querySelectorAll('[aria-label="Next" i], [aria-label*="next" i], [aria-label*="tiep" i], [aria-label*="sau" i]');
-    for (const el of ariaCandidates) {
-      if (!isPaginationDisabled(el) && isVisible(el)) return el;
-    }
-
-    // Strategy 4: Any pagination container — find rightmost clickable with right-arrow icon
-    const paginations = document.querySelectorAll('.p-pagination, .arco-pagination, [class*="pagination" i]');
-    for (const pag of paginations) {
-      const items = Array.from(pag.querySelectorAll('li, button, [role="button"]'));
-      for (let i = items.length - 1; i >= 0; i--) {
-        const item = items[i];
-        if (isPaginationDisabled(item) || !isVisible(item)) continue;
-        const text = (item.textContent || '').trim();
-        if (text === '>' || /^Next$/i.test(text)
-          || item.querySelector('svg[class*="right" i], svg[class*="next" i]')) {
-          return item;
-        }
-      }
-    }
-
-    return null;
-  }
-
-  function isVisible(el) {
-    if (!el) return false;
-    const rect = el.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return false;
-    const style = window.getComputedStyle(el);
-    return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
-  }
-
-  function getCurrentPageNum() {
-    // Strategy 1: aria-current (most reliable, TikTok uses this)
-    const ariaCurrent = document.querySelector('[aria-current="page"], [aria-current="true"]');
-    if (ariaCurrent) {
-      const n = parseInt((ariaCurrent.textContent || '').trim(), 10);
-      if (!isNaN(n)) return n;
-    }
-    // Strategy 2: TikTok p- prefix or Arco active class
-    const active = document.querySelector('.p-pagination-item-active, .arco-pagination-item-active, [class*="pagination" i] [class*="active" i]');
-    if (active) {
-      const n = parseInt((active.textContent || '').trim(), 10);
-      if (!isNaN(n)) return n;
-    }
-    return 0;
-  }
-
-  // Build a signature of the current page that changes when pagination loads new data.
-  // Combines: current page num + first/last order_no on the page + total order count.
-  function getPageSignature() {
-    const pageNum = getCurrentPageNum();
-    const orders = collectOrderNumbers();
-    const first = orders[0] || '';
-    const last = orders[orders.length - 1] || '';
-    return pageNum + '|' + first + '|' + last + '|' + orders.length;
-  }
-
-  // Wait for the page to change after clicking Next.
-  // Detects via signature change (order_no rotation) — more reliable than UI state.
-  async function waitForPageChange(previousSignature, timeout = 12000) {
-    const startTime = Date.now();
-    while (Date.now() - startTime < timeout) {
-      const current = getPageSignature();
-      // Need orders count > 0 to confirm new page rendered
-      const orderCount = parseInt(current.split('|').pop(), 10);
-      if (current !== previousSignature && orderCount > 0) {
-        await sleep(700); // settle time for DOM render + lazy images
-        // Re-verify signature stable (not still mutating)
-        const verify = getPageSignature();
-        if (verify === current) return true;
-      }
-      await sleep(150);
-    }
-    return false;
-  }
-
-  // Click that simulates real user interaction better
-  function clickPaginationButton(el) {
-    if (!el) return;
-    try {
-      el.scrollIntoView({ block: 'center', behavior: 'instant' });
-    } catch (e) { /* ignore older browsers */ }
-
-    // Some Arco items wrap the actual button in a span; click the deepest interactive child
-    let target = el;
-    const inner = el.querySelector('button, a, [role="button"]');
-    if (inner && inner !== el) target = inner;
-
-    // Dispatch full pointer + mouse sequence (TikTok React handlers may need this)
-    const opts = { bubbles: true, cancelable: true, view: window };
-    target.dispatchEvent(new PointerEvent('pointerdown', opts));
-    target.dispatchEvent(new MouseEvent('mousedown', opts));
-    target.dispatchEvent(new PointerEvent('pointerup', opts));
-    target.dispatchEvent(new MouseEvent('mouseup', opts));
-    target.dispatchEvent(new MouseEvent('click', opts));
-  }
-
-  // Collect orders across multiple pages with auto-pagination
-  async function collectOrdersMultiPage(pageCount) {
-    const allOrders = [];
-    const seen = new Set();
-
-    for (let page = 1; page <= pageCount; page++) {
-      log('Thu thap trang ' + page + '/' + pageCount + '...');
-
-      const pageOrders = collectOrderNumbers();
-      let newCount = 0;
-      for (const order of pageOrders) {
-        if (!seen.has(order)) {
-          seen.add(order);
-          allOrders.push(order);
-          newCount++;
-        }
-      }
-
-      log('Trang ' + page + ': ' + newCount + ' don moi (tong: ' + allOrders.length + ')', 'success');
-
-      if (page >= pageCount) break;
-      if (pageOrders.length === 0) {
-        log('Trang rong - dung lai', '');
-        break;
-      }
-
-      // Capture signature BEFORE click
-      const prevSig = getPageSignature();
-
-      // Find Next button
-      const nextBtn = findNextButton();
-      if (!nextBtn) {
-        log('Khong tim thay nut "Tiep" - da den trang cuoi', '');
-        break;
-      }
-
-      log('Click nut Tiep (signature truoc: ' + prevSig.slice(0, 30) + '...)');
-      clickPaginationButton(nextBtn);
-
-      const changed = await waitForPageChange(prevSig);
-      if (!changed) {
-        const newSig = getPageSignature();
-        log('Timeout chuyen trang. Sig hien tai: ' + newSig.slice(0, 30) + '... - dung lai', 'error');
-        break;
-      }
-
-      // Random delay to avoid anti-bot detection (1.5-2.5s)
-      const delay = 1500 + Math.random() * 1000;
-      await sleep(delay);
-    }
-
-    log('Tong cong: ' + allOrders.length + ' don tu ' + pageCount + ' trang', 'success');
-    return allOrders;
   }
 
   // ========== ORDER DETAIL: EXTRACT DATA ==========
@@ -482,131 +307,54 @@
     return { orderNo, name, phone, address };
   }
 
-  // ========== VALIDATION ==========
-
-  function isValidOrderNo(orderNo) {
-    return /^\d{17,19}$/.test(String(orderNo));
-  }
+  // ========== UTILITIES ==========
 
   function buildOrderUrl(orderNo) {
     return 'https://seller-vn.tiktok.com/order/detail?order_no=' + orderNo + '&shop_region=VN';
   }
 
-  // ========== GOOGLE SHEET API ==========
+  // ========== GOOGLE SHEET (DIRECT WRITE) ==========
 
-  async function callSheetAPI(sheetUrl, action, data) {
-    if (!sheetUrl) return null;
+  async function pushResultToSheet(sheetUrl, data) {
+    if (!sheetUrl) return;
     try {
-      const body = action ? { action, ...data } : data;
-      const response = await fetch(sheetUrl, {
+      await fetch(sheetUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          orderNo: data.orderNo,
+          name: data.name,
+          phone: data.phone,
+          address: data.address,
+        }),
         redirect: 'follow',
       });
-      return await response.json();
+      log('→ Sheet: OK', 'success');
     } catch (err) {
-      log('Sheet API loi (' + (action || 'legacy') + '): ' + err.message, 'error');
-      return null;
+      log('Sheet loi: ' + err.message, 'error');
     }
   }
 
-  async function claimNextBatch(sheetUrl, profileId, batchSize) {
-    const result = await callSheetAPI(sheetUrl, 'claimBatch', {
-      profileId: profileId,
-      batchSize: batchSize || 10,
-    });
-    if (result && result.status === 'ok') {
-      return result.orders || [];
-    }
-    return [];
-  }
-
-  async function releaseRemainingOrders(sheetUrl, currentBatch, batchIndex) {
-    const remaining = currentBatch.slice(batchIndex);
-    if (remaining.length === 0 || !sheetUrl) return;
-    log('Tra lai ' + remaining.length + ' don chua xu ly...', '');
-    await callSheetAPI(sheetUrl, 'releaseOrders', { orders: remaining });
-  }
-
-  async function submitResultToSheet(sheetUrl, data, profileId) {
-    if (!sheetUrl) return;
-    const result = await callSheetAPI(sheetUrl, 'submitResult', {
-      orderNo: data.orderNo,
-      name: data.name,
-      phone: data.phone,
-      address: data.address,
-      profile: profileId,
-    });
-    if (result && result.status === 'ok') {
-      log('→ Sheet Queue: OK', 'success');
-    }
-  }
-
-  // Push collected orders to Sheet queue (runs in content.js so it survives popup close)
-  async function pushOrdersToSheet(sheetUrl, orders) {
-    if (!sheetUrl || !orders || orders.length === 0) return null;
-    log('Day ' + orders.length + ' don vao hang doi...');
-    const result = await callSheetAPI(sheetUrl, 'pushOrders', { orders });
-    if (result && result.status === 'ok') {
-      log('Hang doi: +' + result.added + ' moi, ' + (result.duplicate || 0) + ' trung', 'success');
-      return result;
-    }
-    log('Loi day vao hang doi: ' + JSON.stringify(result), 'error');
-    return null;
-  }
-
-  // ========== MAIN PROCESS ==========
+  // ========== MAIN PROCESS (ORDER DETAIL) ==========
 
   async function processOrderDetail() {
     const state = await chrome.storage.local.get(null);
     if (!state.isRunning) return;
 
     const sheetUrl = state.sheetUrl || '';
-    const profileId = state.profileId || 'local';
-    const queueMode = state.queueMode || false;
     const delay = state.delay || 5000;
+    const orders = state.orders || [];
+    const currentIndex = state.currentIndex || 0;
 
-    // Determine current order from batch (queue) or static list (local)
-    let currentOrder;
-    if (queueMode) {
-      const batch = state.currentBatch || [];
-      const batchIdx = state.batchIndex || 0;
-      if (batchIdx >= batch.length) {
-        // Batch exhausted — claim next batch
-        const newBatch = await claimNextBatch(sheetUrl, profileId, 10);
-        if (newBatch.length === 0) {
-          log('Khong con don nao trong hang doi!', 'success');
-          await chrome.storage.local.set({ isRunning: false });
-          notifyPopup();
-          return;
-        }
-        await chrome.storage.local.set({ currentBatch: newBatch, batchIndex: 0 });
-        // Sync local state for accurate displayIdx below
-        state.currentBatch = newBatch;
-        state.batchIndex = 0;
-        currentOrder = newBatch[0];
-        log('Nhan batch moi: ' + newBatch.length + ' don');
-      } else {
-        currentOrder = batch[batchIdx];
-      }
-    } else {
-      // Local-only mode (backward compat)
-      const orders = state.orders || [];
-      const currentIndex = state.currentIndex || 0;
-      if (currentIndex >= orders.length) {
-        log('Da xu ly xong tat ca don hang!', 'success');
-        await chrome.storage.local.set({ isRunning: false });
-        notifyPopup();
-        return;
-      }
-      currentOrder = orders[currentIndex];
+    if (currentIndex >= orders.length) {
+      log('Da xu ly xong tat ca don hang!', 'success');
+      await chrome.storage.local.set({ isRunning: false });
+      notifyPopup();
+      return;
     }
 
-    const displayIdx = queueMode
-      ? (state.batchIndex || 0) + 1 + '/' + (state.currentBatch || []).length
-      : (state.currentIndex || 0) + 1 + '/' + (state.orders || []).length;
-    log('Xu ly don ' + displayIdx + ': ' + currentOrder);
+    const currentOrder = orders[currentIndex];
+    log('Xu ly don ' + (currentIndex + 1) + '/' + orders.length + ': ' + currentOrder);
 
     try {
       await waitForText('Chi tiết khách hàng');
@@ -615,19 +363,18 @@
       const clicked = await clickRevealButton();
       if (!clicked) {
         log('Khong click duoc nut reveal - don ' + currentOrder, 'error');
-        await advanceToNext(state, queueMode, false);
+        await advanceToNext(state, false);
         return;
       }
 
       await sleep(2000);
 
-      // Rate limit check — release remaining batch and stop
+      // Rate limit check — stop and save partial data
       if (checkRateLimit()) {
-        log('TikTok CHAN - tra lai don chua xu ly va dung', 'error');
+        log('TikTok CHAN - dung lai', 'error');
         dismissRateLimit();
         await sleep(1000);
 
-        // Save partial data if name available
         const partialData = extractCustomerData();
         if (partialData && partialData.name) {
           const extractedData = state.extractedData || [];
@@ -635,14 +382,7 @@
             extractedData.push(partialData);
           }
           await chrome.storage.local.set({ extractedData });
-          if (queueMode) await submitResultToSheet(sheetUrl, partialData, profileId);
-        }
-
-        // Release remaining batch orders back to queue
-        if (queueMode) {
-          const batch = state.currentBatch || [];
-          const batchIdx = (state.batchIndex || 0) + 1; // current one partially processed
-          await releaseRemainingOrders(sheetUrl, batch, batchIdx);
+          await pushResultToSheet(sheetUrl, partialData);
         }
 
         await chrome.storage.local.set({ isRunning: false, rateLimited: true });
@@ -659,31 +399,20 @@
         }
         await chrome.storage.local.set({ extractedData });
         log('OK: ' + (data.name || '?') + ' | ' + (data.phone || 'khong co SDT'), 'success');
-
-        if (queueMode) {
-          await submitResultToSheet(sheetUrl, data, profileId);
-        } else if (sheetUrl) {
-          // Legacy direct-write for non-queue local mode (Sheet URL set but not pushed to queue)
-          await callSheetAPI(sheetUrl, null, {
-            orderNo: data.orderNo, name: data.name,
-            phone: data.phone, address: data.address,
-            profile: profileId,
-          });
-        }
+        await pushResultToSheet(sheetUrl, data);
       } else {
         log('Khong doc duoc du lieu - don ' + currentOrder, 'error');
       }
 
-      await advanceToNext(state, queueMode, true);
+      await advanceToNext(state, true);
     } catch (err) {
       log('Loi: ' + err.message, 'error');
-      await advanceToNext(state, queueMode, false);
+      await advanceToNext(state, false);
     }
   }
 
-  // Navigate to next order — handles both queue and local modes
-  async function advanceToNext(state, queueMode, success) {
-    // Re-check if user stopped during processing
+  // Navigate to next order
+  async function advanceToNext(state, success) {
     const freshState = await chrome.storage.local.get(['isRunning']);
     if (!freshState.isRunning) {
       log('Da dung boi nguoi dung', '');
@@ -693,51 +422,19 @@
 
     const delay = state.delay || 5000;
     const failCount = success ? (state.failCount || 0) : (state.failCount || 0) + 1;
+    const orders = state.orders || [];
+    const nextIndex = (state.currentIndex || 0) + 1;
 
-    if (queueMode) {
-      const batch = state.currentBatch || [];
-      const nextBatchIdx = (state.batchIndex || 0) + 1;
+    await chrome.storage.local.set({ currentIndex: nextIndex, failCount });
+    notifyPopup();
 
-      if (nextBatchIdx >= batch.length) {
-        // Batch complete — claim next
-        const sheetUrl = state.sheetUrl || '';
-        const profileId = state.profileId || 'local';
-        const newBatch = await claimNextBatch(sheetUrl, profileId, 10);
-
-        if (newBatch.length === 0) {
-          log('HOAN TAT! Khong con don nao.', 'success');
-          await chrome.storage.local.set({ isRunning: false, failCount });
-          notifyPopup();
-          return;
-        }
-
-        log('Batch moi: ' + newBatch.length + ' don');
-        await chrome.storage.local.set({ currentBatch: newBatch, batchIndex: 0, failCount });
-        notifyPopup();
-        await sleep(delay);
-        window.location.href = buildOrderUrl(newBatch[0]);
-      } else {
-        await chrome.storage.local.set({ batchIndex: nextBatchIdx, failCount });
-        notifyPopup();
-        await sleep(delay);
-        window.location.href = buildOrderUrl(batch[nextBatchIdx]);
-      }
+    if (nextIndex < orders.length) {
+      await sleep(delay);
+      window.location.href = buildOrderUrl(orders[nextIndex]);
     } else {
-      // Local-only mode
-      const orders = state.orders || [];
-      const nextIndex = (state.currentIndex || 0) + 1;
-
-      await chrome.storage.local.set({ currentIndex: nextIndex, failCount });
+      log('HOAN TAT! Da xu ly ' + orders.length + ' don.', 'success');
+      await chrome.storage.local.set({ isRunning: false });
       notifyPopup();
-
-      if (nextIndex < orders.length) {
-        await sleep(delay);
-        window.location.href = buildOrderUrl(orders[nextIndex]);
-      } else {
-        log('HOAN TAT! Da xu ly ' + orders.length + ' don.', 'success');
-        await chrome.storage.local.set({ isRunning: false });
-        notifyPopup();
-      }
     }
   }
 
@@ -751,55 +448,34 @@
         return;
       }
 
-      const pageCount = msg.pageCount || 1;
+      try {
+        const allOrders = collectOrderNumbers();
 
-      // Async multi-page collection + push to Sheet (runs entirely in content script,
-      // survives popup close because content script lifecycle is tied to the tab).
-      (async () => {
-        try {
-          const allOrders = await collectOrdersMultiPage(pageCount);
+        if (allOrders.length === 0) {
+          sendResponse({ success: false, error: 'Khong tim thay don hang nao' });
+          return;
+        }
 
-          if (allOrders.length === 0) {
-            sendResponse({ success: false, error: 'Khong tim thay don hang nao' });
-            return;
-          }
-
-          // Save locally first (always, even if push fails later)
-          await chrome.storage.local.set({
-            orders: allOrders,
-            allOrdersCount: allOrders.length,
-            currentIndex: 0,
-            extractedData: [],
-            failCount: 0,
-            rateLimited: false,
-          });
-
-          // Push to Sheet queue if URL configured (continues even if popup closed)
-          const settings = await chrome.storage.local.get(['sheetUrl']);
-          const sheetUrl = settings.sheetUrl || '';
-          let pushResult = null;
-          if (sheetUrl) {
-            pushResult = await pushOrdersToSheet(sheetUrl, allOrders);
-            if (pushResult) {
-              await chrome.storage.local.set({ queueMode: true });
-              notifyPopup(); // tell popup to refresh global progress
-            }
-          }
-
+        chrome.storage.local.set({
+          orders: allOrders,
+          allOrdersCount: allOrders.length,
+          currentIndex: 0,
+          extractedData: [],
+          failCount: 0,
+          rateLimited: false,
+        }, () => {
           sendResponse({
             success: true,
             count: allOrders.length,
             total: allOrders.length,
-            pushed: pushResult ? pushResult.added : 0,
-            duplicate: pushResult ? (pushResult.duplicate || 0) : 0,
           });
-        } catch (err) {
-          log('Loi collectOrders: ' + err.message, 'error');
-          try { sendResponse({ success: false, error: err.message }); } catch (e) { /* popup closed */ }
-        }
-      })();
+        });
 
-      return true; // async response
+        return true; // async sendResponse
+      } catch (err) {
+        log('Loi collectOrders: ' + err.message, 'error');
+        sendResponse({ success: false, error: err.message });
+      }
     }
   });
 
