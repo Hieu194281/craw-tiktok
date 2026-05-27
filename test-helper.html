@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>TikTok Order Extractor - GAS Test Helper</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, 'Segoe UI', sans-serif;
+    background: #f8f9fa;
+    color: #333;
+    padding: 24px;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+  h1 { color: #fe2c55; margin-bottom: 4px; font-size: 22px; }
+  h2 { color: #444; margin: 18px 0 10px; font-size: 15px; text-transform: uppercase; }
+  .subtitle { color: #888; margin-bottom: 18px; font-size: 13px; }
+  .url-box {
+    background: white;
+    padding: 14px;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    margin-bottom: 18px;
+  }
+  .url-box label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 13px; }
+  input[type="text"] {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-family: monospace;
+    font-size: 12px;
+  }
+  .url-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  button {
+    padding: 8px 14px;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary { background: #fe2c55; color: white; }
+  .btn-secondary { background: #e8e8e8; color: #333; }
+  .btn-success { background: #1a8917; color: white; }
+  .btn-warn { background: #ff9800; color: white; }
+  .test-row {
+    background: white;
+    padding: 12px 14px;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    display: grid;
+    grid-template-columns: 80px 1fr 100px 100px;
+    gap: 12px;
+    align-items: center;
+  }
+  .test-id { font-weight: 700; color: #fe2c55; font-family: monospace; }
+  .test-desc { font-size: 13px; }
+  .test-status {
+    text-align: center;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 4px;
+  }
+  .status-pass { background: #e6f7e6; color: #1a8917; }
+  .status-fail { background: #ffeaea; color: #c00; }
+  .status-pending { background: #f0f0f0; color: #999; }
+  .status-running { background: #fff3e6; color: #e65100; }
+  .response-box {
+    grid-column: 1 / -1;
+    background: #1e1e1e;
+    color: #d4d4d4;
+    padding: 10px;
+    border-radius: 6px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 11px;
+    white-space: pre-wrap;
+    max-height: 200px;
+    overflow-y: auto;
+    margin-top: 8px;
+    display: none;
+  }
+  .response-box.show { display: block; }
+  .summary {
+    background: white;
+    padding: 14px;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    margin-bottom: 18px;
+    display: flex;
+    justify-content: space-around;
+    text-align: center;
+  }
+  .summary-item .num { font-size: 24px; font-weight: 700; }
+  .summary-item .label { font-size: 11px; color: #999; text-transform: uppercase; }
+  .num-pass { color: #1a8917; }
+  .num-fail { color: #c00; }
+  .num-pending { color: #999; }
+  .legend {
+    background: #fff8e1;
+    border-left: 3px solid #ffa000;
+    padding: 10px 14px;
+    border-radius: 4px;
+    margin-bottom: 14px;
+    font-size: 12px;
+    color: #555;
+  }
+  .controls { display: flex; gap: 8px; margin-bottom: 14px; }
+  .save-status { font-size: 11px; color: #1a8917; margin-top: 4px; display: none; }
+</style>
+</head>
+<body>
+  <h1>TikTok Order Extractor - GAS Test Helper</h1>
+  <p class="subtitle">Test 10 endpoints cua Google Apps Script truoc khi dung extension</p>
+
+  <div class="url-box">
+    <label>Google Apps Script URL (Web app deployment):</label>
+    <input type="text" id="gasUrl" placeholder="https://script.google.com/macros/s/AKfycb.../exec" />
+    <div class="url-actions">
+      <button class="btn-secondary" id="saveUrl">Luu URL</button>
+      <button class="btn-secondary" id="loadUrl">Tai URL da luu</button>
+      <span class="save-status" id="saveStatus">Da luu vao localStorage</span>
+    </div>
+  </div>
+
+  <div class="legend">
+    <strong>Quy trinh:</strong> Nhap URL > Bam "Run All" hoac chay tung test theo thu tu T1.1 -> T1.10. Cac test ghi du lieu vao Sheet "Queue" va "Results"; sau khi test xong nho xoa du lieu test.
+  </div>
+
+  <div class="controls">
+    <button class="btn-primary" id="runAll">Run All Tests</button>
+    <button class="btn-warn" id="resetAll">Reset trang thai</button>
+    <button class="btn-secondary" id="clearTestData">Xoa data test (Queue + Results test)</button>
+  </div>
+
+  <div class="summary">
+    <div class="summary-item">
+      <div class="num num-pass" id="numPass">0</div>
+      <div class="label">Pass</div>
+    </div>
+    <div class="summary-item">
+      <div class="num num-fail" id="numFail">0</div>
+      <div class="label">Fail</div>
+    </div>
+    <div class="summary-item">
+      <div class="num num-pending" id="numPending">10</div>
+      <div class="label">Pending</div>
+    </div>
+  </div>
+
+  <h2>T1: Endpoint Tests</h2>
+  <div id="testList"></div>
+
+  <script>
+  // ========== TEST DEFINITIONS ==========
+  const TESTS = [
+    {
+      id: 'T1.1',
+      desc: 'GET ?action=test => { status: "ready" }',
+      run: async (url) => {
+        const r = await fetch(url + '?action=test', { method: 'GET' });
+        const data = await r.json();
+        return { pass: data.status === 'ready', data };
+      },
+    },
+    {
+      id: 'T1.2',
+      desc: 'GET ?action=status (queue rong hoac co data)',
+      run: async (url) => {
+        const r = await fetch(url + '?action=status', { method: 'GET' });
+        const data = await r.json();
+        const ok = typeof data.total === 'number' && typeof data.pending === 'number';
+        return { pass: ok, data };
+      },
+    },
+    {
+      id: 'T1.3',
+      desc: 'POST pushOrders voi 5 don => added: 5, duplicate: 0',
+      run: async (url) => {
+        const orders = ['90000000000000001','90000000000000002','90000000000000003','90000000000000004','90000000000000005'];
+        const r = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ action: 'pushOrders', orders }),
+          redirect: 'follow',
+        });
+        const data = await r.json();
+        const ok = data.status === 'ok' && data.added === 5 && data.duplicate === 0;
+        return { pass: ok, data };
+      },
+    },
+    {
+      id: 'T1.4',
+      desc: 'POST pushOrders cung 5 don => added: 0, duplicate: 5',
+      run: async (url) => {
+        const orders = ['90000000000000001','90000000000000002','90000000000000003','90000000000000004','90000000000000005'];
+        const r = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ action: 'pushOrders', orders }),
+          redirect: 'follow',
+        });
+        const data = await r.json();
+        const ok = data.added === 0 && data.duplicate === 5;
+        return { pass: ok, data };
+      },
+    },
+    {
+      id: 'T1.5',
+      desc: 'POST claimBatch profile-test-a, batchSize 3 => 3 don',
+      run: async (url) => {
+        const r = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ action: 'claimBatch', profileId: 'profile-test-a', batchSize: 3 }),
+          redirect: 'follow',
+        });
+        const data = await r.json();
+        const ok = data.status === 'ok' && Array.isArray(data.orders) && data.orders.length === 3;
+        if (ok) window._claimedByA = data.orders;
+        return { pass: ok, data };
+      },
+    },
+    {
+      id: 'T1.6',
+      desc: 'POST claimBatch profile-test-b => 2 don con lai (khong overlap voi T1.5)',
+      run: async (url) => {
+        const r = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ action: 'claimBatch', profileId: 'profile-test-b', batchSize: 3 }),
+          redirect: 'follow',
+        });
+        const data = await r.json();
+        const claimedB = data.orders || [];
+        const claimedA = window._claimedByA || [];
+        const overlap = claimedB.some((o) => claimedA.includes(o));
+        const ok = data.status === 'ok' && claimedB.length === 2 && !overlap;
+        if (ok) window._claimedByB = claimedB;
+        return { pass: ok, data, note: overlap ? 'Bi overlap voi T1.5!' : '' };
+      },
+    },
+    {
+      id: 'T1.7',
+      desc: 'POST submitResult cho 1 don => Queue=done, Results +1 row',
+      run: async (url) => {
+        const orderNo = (window._claimedByA && window._claimedByA[0]) || '90000000000000001';
+        const r = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({
+            action: 'submitResult',
+            orderNo,
+            name: 'Test Customer',
+            phone: '0901234567',
+            address: '123 Test Street, Test City',
+            profile: 'profile-test-a',
+          }),
+          redirect: 'follow',
+        });
+        const data = await r.json();
+        return { pass: data.status === 'ok', data };
+      },
+    },
+    {
+      id: 'T1.8',
+      desc: 'POST releaseOrders cho 2 don T1.5 con lai => released: 2',
+      run: async (url) => {
+        const claimedA = window._claimedByA || [];
+        const remaining = claimedA.slice(1); // skip first (T1.7 marked done)
+        const r = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ action: 'releaseOrders', orders: remaining }),
+          redirect: 'follow',
+        });
+        const data = await r.json();
+        const ok = data.status === 'ok' && data.released === remaining.length;
+        return { pass: ok, data };
+      },
+    },
+    {
+      id: 'T1.9',
+      desc: 'GET ?action=status => total: 5, done: 1, claimed: 2, pending: 2',
+      run: async (url) => {
+        const r = await fetch(url + '?action=status', { method: 'GET' });
+        const data = await r.json();
+        const ok = data.total === 5 && data.done === 1 && data.claimed === 2 && data.pending === 2;
+        return { pass: ok, data };
+      },
+    },
+    {
+      id: 'T1.10',
+      desc: 'POST khong co action (legacy compat) => Results +1 row',
+      run: async (url) => {
+        const r = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({
+            orderNo: '90000000000099999',
+            name: 'Legacy Test',
+            phone: '0987654321',
+            address: 'Legacy Address',
+            profile: 'legacy',
+          }),
+          redirect: 'follow',
+        });
+        const data = await r.json();
+        return { pass: data.status === 'ok', data };
+      },
+    },
+  ];
+
+  const $ = (id) => document.getElementById(id);
+  const STORAGE_KEY = 'gasTestHelperUrl';
+
+  // ========== RENDER ==========
+  function renderTests() {
+    const list = $('testList');
+    list.innerHTML = '';
+    TESTS.forEach((t) => {
+      const row = document.createElement('div');
+      row.className = 'test-row';
+      row.id = 'row-' + t.id;
+      row.innerHTML = `
+        <div class="test-id">${t.id}</div>
+        <div class="test-desc">${t.desc}</div>
+        <button class="btn-secondary" data-test="${t.id}">Run</button>
+        <div class="test-status status-pending" id="status-${t.id}">PENDING</div>
+        <pre class="response-box" id="resp-${t.id}"></pre>
+      `;
+      list.appendChild(row);
+    });
+    document.querySelectorAll('button[data-test]').forEach((btn) => {
+      btn.addEventListener('click', () => runTest(btn.getAttribute('data-test')));
+    });
+  }
+
+  function setStatus(id, status, note) {
+    const el = $('status-' + id);
+    el.className = 'test-status status-' + status;
+    el.textContent = status.toUpperCase() + (note ? ' (' + note + ')' : '');
+    updateSummary();
+  }
+
+  function setResponse(id, response) {
+    const el = $('resp-' + id);
+    el.textContent = JSON.stringify(response, null, 2);
+    el.classList.add('show');
+  }
+
+  function updateSummary() {
+    let pass = 0, fail = 0, pending = 0;
+    TESTS.forEach((t) => {
+      const cls = $('status-' + t.id).className;
+      if (cls.includes('status-pass')) pass++;
+      else if (cls.includes('status-fail')) fail++;
+      else pending++;
+    });
+    $('numPass').textContent = pass;
+    $('numFail').textContent = fail;
+    $('numPending').textContent = pending;
+  }
+
+  // ========== EXECUTION ==========
+  async function runTest(id) {
+    const url = $('gasUrl').value.trim();
+    if (!url) { alert('Nhap GAS URL truoc!'); return; }
+    const test = TESTS.find((t) => t.id === id);
+    if (!test) return;
+
+    setStatus(id, 'running');
+    try {
+      const res = await test.run(url);
+      setStatus(id, res.pass ? 'pass' : 'fail', res.note);
+      setResponse(id, res.data);
+    } catch (err) {
+      setStatus(id, 'fail');
+      setResponse(id, { error: err.message });
+    }
+  }
+
+  async function runAll() {
+    for (const t of TESTS) {
+      await runTest(t.id);
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  }
+
+  function resetAll() {
+    TESTS.forEach((t) => {
+      $('status-' + t.id).className = 'test-status status-pending';
+      $('status-' + t.id).textContent = 'PENDING';
+      $('resp-' + t.id).classList.remove('show');
+      $('resp-' + t.id).textContent = '';
+    });
+    delete window._claimedByA;
+    delete window._claimedByB;
+    updateSummary();
+  }
+
+  async function clearTestData() {
+    const url = $('gasUrl').value.trim();
+    if (!url) { alert('Nhap GAS URL truoc!'); return; }
+    if (!confirm('Xoa cac don test (orderNo bat dau bang 9000...)?\nLuu y: phai vao Sheet xoa thu cong cac dong test, script chi release lai pending de ban dam bao da co.')) return;
+
+    // Release any test orders that are claimed
+    const testOrders = [];
+    for (let i = 1; i <= 5; i++) testOrders.push('9000000000000000' + i);
+    testOrders.push('90000000000099999');
+    try {
+      await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ action: 'releaseOrders', orders: testOrders }),
+        redirect: 'follow',
+      });
+      alert('Da release. Vao Google Sheet xoa cac dong co orderNo 9000... thu cong.');
+    } catch (err) {
+      alert('Loi: ' + err.message);
+    }
+  }
+
+  // ========== STORAGE ==========
+  function saveUrl() {
+    const url = $('gasUrl').value.trim();
+    if (url) {
+      localStorage.setItem(STORAGE_KEY, url);
+      $('saveStatus').style.display = 'inline';
+      setTimeout(() => { $('saveStatus').style.display = 'none'; }, 2000);
+    }
+  }
+
+  function loadUrl() {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) $('gasUrl').value = saved;
+  }
+
+  // ========== INIT ==========
+  $('runAll').addEventListener('click', runAll);
+  $('resetAll').addEventListener('click', resetAll);
+  $('clearTestData').addEventListener('click', clearTestData);
+  $('saveUrl').addEventListener('click', saveUrl);
+  $('loadUrl').addEventListener('click', loadUrl);
+  renderTests();
+  loadUrl();
+  </script>
+</body>
+</html>

@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 400px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 13px;
+      color: #333;
+      background: #f8f9fa;
+    }
+    .header {
+      background: #fe2c55;
+      color: white;
+      padding: 12px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .header-badge {
+      background: rgba(255,255,255,0.2);
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 10px;
+      max-width: 140px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .section {
+      padding: 12px 16px;
+      border-bottom: 1px solid #e8e8e8;
+      background: white;
+    }
+    .section-title {
+      font-weight: 600;
+      margin-bottom: 8px;
+      font-size: 12px;
+      color: #666;
+      text-transform: uppercase;
+    }
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+    .status-idle { background: #f0f0f0; color: #666; }
+    .status-running { background: #e6f7e6; color: #1a8917; }
+    .status-blocked { background: #fff3e6; color: #e65100; }
+    .status-done { background: #e3f2fd; color: #1565c0; }
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .status-idle .status-dot { background: #999; }
+    .status-running .status-dot { background: #1a8917; animation: pulse 1s infinite; }
+    .status-blocked .status-dot { background: #e65100; }
+    .status-done .status-dot { background: #1565c0; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .stat-box {
+      text-align: center;
+      padding: 8px;
+      background: #f8f9fa;
+      border-radius: 6px;
+    }
+    .stat-num {
+      font-size: 20px;
+      font-weight: 700;
+      color: #fe2c55;
+    }
+    .stat-label {
+      font-size: 10px;
+      color: #999;
+      margin-top: 2px;
+    }
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    button {
+      flex: 1;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    button:hover { opacity: 0.85; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-primary { background: #fe2c55; color: white; }
+    .btn-secondary { background: #e8e8e8; color: #333; }
+    .btn-success { background: #1a8917; color: white; }
+    .btn-danger { background: #e65100; color: white; }
+    .setting-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 6px;
+    }
+    .setting-row label { font-size: 12px; }
+    .setting-row input[type="number"] {
+      width: 50px;
+      padding: 4px 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 12px;
+      text-align: center;
+    }
+    .setting-row input[type="text"] {
+      flex: 1;
+      padding: 4px 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 11px;
+      margin-left: 8px;
+    }
+    .save-msg {
+      color: #1a8917;
+      font-size: 11px;
+      margin-top: 4px;
+      display: none;
+    }
+    .data-table {
+      max-height: 200px;
+      overflow-y: auto;
+      margin-top: 8px;
+      font-size: 11px;
+    }
+    .data-table table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .data-table th {
+      background: #f0f0f0;
+      padding: 4px 6px;
+      text-align: left;
+      position: sticky;
+      top: 0;
+      font-size: 10px;
+    }
+    .data-table td {
+      padding: 4px 6px;
+      border-bottom: 1px solid #f0f0f0;
+      word-break: break-all;
+    }
+    .data-table tr:hover td { background: #f8f9fa; }
+    .empty-msg {
+      text-align: center;
+      color: #999;
+      padding: 16px;
+      font-size: 12px;
+    }
+    .log {
+      max-height: 80px;
+      overflow-y: auto;
+      font-size: 10px;
+      color: #666;
+      margin-top: 8px;
+      padding: 6px;
+      background: #f8f9fa;
+      border-radius: 4px;
+      font-family: monospace;
+    }
+    .log-entry { padding: 1px 0; }
+    .log-error { color: #e65100; }
+    .log-success { color: #1a8917; }
+    .gs-status {
+      font-size: 11px;
+      margin-top: 4px;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+    .gs-ok { background: #e6f7e6; color: #1a8917; }
+    .gs-err { background: #ffeaea; color: #c00; }
+    .progress-bar-container {
+      height: 6px;
+      background: #e8e8e8;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-bottom: 6px;
+    }
+    .progress-bar {
+      height: 100%;
+      background: #1a8917;
+      border-radius: 3px;
+      transition: width 0.3s;
+    }
+    .global-stats {
+      font-size: 11px;
+      color: #666;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <span>TikTok Order Extractor</span>
+    <span class="header-badge" id="profileBadge">...</span>
+  </div>
+
+  <!-- Settings -->
+  <div class="section">
+    <div class="section-title">Cai dat</div>
+    <div class="setting-row">
+      <label>Google Sheet URL:</label>
+      <input type="text" id="sheetUrl" placeholder="Paste URL tu Google Apps Script...">
+    </div>
+    <div class="setting-row">
+      <label>So trang can cao:</label>
+      <input type="number" id="pageCount" value="1" min="1" max="100">
+      <label style="margin-left:12px">Delay (giay):</label>
+      <input type="number" id="delay" value="5" min="2" max="60">
+    </div>
+    <div class="btn-row">
+      <button id="btnSave" class="btn-secondary">Luu cai dat</button>
+      <button id="btnTestSheet" class="btn-secondary">Test Google Sheet</button>
+    </div>
+    <div class="save-msg" id="saveMsg">Da luu!</div>
+    <div class="gs-status" id="gsStatus" style="display:none;"></div>
+  </div>
+
+  <!-- Global Progress (queue mode) -->
+  <div class="section" id="globalProgressSection" style="display:none;">
+    <div class="section-title">Tien do chung (tat ca profiles)</div>
+    <div class="progress-bar-container">
+      <div class="progress-bar" id="globalProgressBar" style="width:0%"></div>
+    </div>
+    <div class="global-stats" id="globalStats">
+      Tong: 0 | Xong: 0 | Dang XL: 0 | Cho: 0 | Loi: 0
+    </div>
+    <button id="btnRefreshProgress" class="btn-secondary" style="margin-top:6px;font-size:11px;padding:4px 8px;">Cap nhat</button>
+  </div>
+
+  <!-- Status -->
+  <div class="section">
+    <div id="statusBar" class="status-bar status-idle">
+      <span class="status-dot"></span>
+      <span id="statusText">San sang</span>
+    </div>
+    <div class="stats">
+      <div class="stat-box">
+        <div class="stat-num" id="totalOrders">0</div>
+        <div class="stat-label">Batch hien tai</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-num" id="extracted">0</div>
+        <div class="stat-label">Da lay</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-num" id="failed">0</div>
+        <div class="stat-label">Loi/Chan</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="section">
+    <div class="section-title">Dieu khien</div>
+    <div class="btn-row">
+      <button id="btnCollect" class="btn-secondary">1. Thu thap & Day</button>
+      <button id="btnStart" class="btn-primary" disabled>2. Bat dau lay</button>
+      <button id="btnStop" class="btn-danger" disabled>Dung</button>
+    </div>
+    <div id="orderRange" style="font-size:11px; color:#666; margin-top:6px;"></div>
+  </div>
+
+  <!-- Data -->
+  <div class="section">
+    <div class="section-title">Du lieu da lay (profile nay)</div>
+    <div class="btn-row">
+      <button id="btnExport" class="btn-success" disabled>Xuat CSV</button>
+      <button id="btnClear" class="btn-secondary">Xoa du lieu</button>
+    </div>
+    <div class="data-table" id="dataTable">
+      <div class="empty-msg">Chua co du lieu</div>
+    </div>
+  </div>
+
+  <!-- Log -->
+  <div class="section">
+    <div class="section-title">Nhat ky</div>
+    <div class="log" id="logArea"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
